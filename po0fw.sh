@@ -55,6 +55,9 @@ get_exit_ip() {
 
 EXIT_IP=$(get_exit_ip) || { echo "po0fw: 无法探测出口 IPv4" >&2; exit 1; }
 EXIT_NET=$(echo "$EXIT_IP" | awk -F. '{print $1"."$2"."$3".0/24"}')
+# JSON 里 / 被转义为 \/，且必须只匹配 whitelist 数组的 "ip":"..." 条目，
+# 不能全文匹配（status 响应的 currentIp 字段会回显调用者自己的网段，导致假阳性）
+EXIT_NET_JSON="\"ip\":\"$(echo "$EXIT_NET" | sed 's|/|\\/|')\""
 log "出口 IP: $EXIT_IP (网段 $EXIT_NET)"
 
 FAIL=0
@@ -82,8 +85,8 @@ for entry in $TOKENS; do
     IFS=','; continue
   fi
 
-  # 已在白名单则跳过（幂等 + 不推进淘汰队列）
-  if echo "$st" | grep -q "$(echo "$EXIT_NET" | sed 's/\//\\\\\//')"; then
+  # 已在白名单则跳过（幂等 + 不推进淘汰队列）；只匹配 whitelist 的 "ip":"..." 条目
+  if echo "$st" | grep -qF "$EXIT_NET_JSON"; then
     log "#$IDX $short… ✅ $EXIT_NET 已在白名单，跳过"
     IFS=','; continue
   fi
@@ -91,20 +94,13 @@ for entry in $TOKENS; do
   url="$API_BASE?action=add&token=$tok"
   [ -n "$slot" ] && url="$url&slot=$slot"
   res=$(curl $CURL_OPTS "$url" 2>&1)
-  if echo "$res" | grep -q "$(echo "$EXIT_NET" | sed 's/\//\\\\\//')"; then
+  # add 后必须以复查 status 为准，不信任 add 的回显
+  st2=$(curl $CURL_OPTS "$API_BASE?action=status&token=$tok" 2>/dev/null)
+  if echo "$st2" | grep -qF "$EXIT_NET_JSON"; then
     log "#$IDX $short… ➕ 已加白 $EXIT_NET${slot:+ (槽位 $slot)}"
-  elif echo "$res" | grep -qi '"code"\|error'; then
-    log "#$IDX $short… ❌ 加白失败: $res"
-    FAIL=1
   else
-    # 有些实现 add 返回不含列表，复查一次
-    st2=$(curl $CURL_OPTS "$API_BASE?action=status&token=$tok" 2>/dev/null)
-    if echo "$st2" | grep -q "$(echo "$EXIT_NET" | sed 's/\//\\\\\//')"; then
-      log "#$IDX $short… ➕ 已加白 $EXIT_NET${slot:+ (槽位 $slot)}"
-    else
-      log "#$IDX $short… ⚠️ add 已发送但复查未见 $EXIT_NET: $res"
-      FAIL=1
-    fi
+    log "#$IDX $short… ❌ 加白失败，复查未见 $EXIT_NET。add 响应: $res"
+    FAIL=1
   fi
   IFS=','
 done
