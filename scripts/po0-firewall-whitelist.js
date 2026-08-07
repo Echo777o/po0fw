@@ -309,10 +309,14 @@ if (tokens.length === 0) {
       "po0 加白 " + okCount + "/" + results.length + " · 出口 " + exitIp + (onCellular() ? " 📶" : "");
     var content = lines.join("\n");
 
-    // 仅在出口 IP 或加白状态较上次变化时通知，例行 POST 保持安静
-    if (changed) {
+    // 成功态仅在出口 IP / 加白状态变化时通知；失败/未生效必须每次弹，
+    // 否则持久化状态相同（都是失败）时 changed=false 会把错误静默吞掉。
+    if (changed || !allOk) {
       notify("po0 防火墙加白", title, content);
     }
     finish(title, content, allOk);
+  }).catch(function (e) {
+    notify("po0 防火墙加白", "脚本异常", String(e && e.message ? e.message : e));
+    finish("po0 加白：脚本异常", String(e && e.message ? e.message : e), false);
   });
 }
