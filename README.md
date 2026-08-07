@@ -16,6 +16,17 @@ po0 防火墙自动加白 —— PC（Linux / macOS / Windows）、安卓 Termux
 
 Token 在 po0 控制台机器详情页「防火墙」卡片获取，形如 `pgnfw_...`。**token 即加白凭证，请勿公开分享。**
 
+## 平台总览
+
+| 平台 | 方案 | 触发方式 |
+|---|---|---|
+| Linux / macOS | 本仓库 shell 脚本 | systemd timer / cron 每 10 分钟 |
+| OpenWrt / Kwrt 软路由 | 本仓库 shell 脚本 | cron + hotplug WAN 重连秒级触发 |
+| Windows | 本仓库 PowerShell | 计划任务：10 分钟 + 网络事件 |
+| 安卓 | [android/](android/)：MacroDroid / HTTP Shortcuts / Termux | 网络切换 + 定时 |
+| iOS 代理客户端 | 群友 [po0fw iOS 版](https://po0fw.rlyio.com/)（Surge/Loon/Stash/QX/小火箭/Egern） | network-changed + cron |
+| iOS 无代理 App | [ios/](ios/)：快捷指令自动化 | Wi-Fi 切换触发 |
+
 ## 安装
 
 ### Linux / macOS / 安卓 Termux
