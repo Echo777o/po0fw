@@ -73,11 +73,15 @@ function httpRequest(method, opts) {
         }
       );
     } else if (isSurgeLike) {
-      var fn = method === "POST" ? $httpClient.post : $httpClient.get;
-      fn(opts, function (error, response, body) {
+      // 注意：不能把 $httpClient.post 解引用成局部变量再调用 —— Shadowrocket 的
+      // $httpClient 是 ObjC 桥接对象，脱离对象调用会抛
+      // "self type check failed for Objective-C instance method"。必须直调。
+      var cb = function (error, response, body) {
         if (error) resolve({ error: String(error) });
         else resolve({ body: body, status: response && (response.status || response.statusCode) });
-      });
+      };
+      if (method === "POST") $httpClient.post(opts, cb);
+      else $httpClient.get(opts, cb);
     } else {
       resolve({ error: "unsupported client" });
     }
