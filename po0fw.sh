@@ -9,12 +9,17 @@
 #
 # 配置文件（可选，优先级低于环境变量/参数）: /etc/po0fw.conf 内容示例:
 #   PO0FW_TOKENS="pgnfw_xxx,pgnfw_yyy@0"
+#
+# API 说明: 使用 po0 官方 IP 直连端点（Let's Encrypt IP 证书）。
+#   POST https://124.221.69.228/api/firewall/<token>/add[?slot=N]
+# 服务端按来源 IP 自动识别出口 /24 网段并幂等加白（重复不占坑、不推进淘汰），
+# 因此本脚本无需自行探测出口 IP，也无需给任何域名配置代理直连分流。
 
 set -u
 
-API_BASE="${PO0FW_API:-https://console.po0.io/modules/servers/penguin/api/firewall.php}"
+API_BASE="${PO0FW_API:-https://124.221.69.228/api/firewall}"
+STATUS_API="${PO0FW_STATUS_API:-https://console.po0.io/modules/servers/penguin/api/firewall.php}"
 CONF="${PO0FW_CONF:-/etc/po0fw.conf}"
-STATE_DIR="${PO0FW_STATE:-/tmp/po0fw}"
 CURL_OPTS="-4sS -m 20 --retry 2 --retry-delay 2"
 
 MODE="add"
@@ -37,28 +42,12 @@ if [ -z "$TOKENS" ]; then
   exit 1
 fi
 
-mkdir -p "$STATE_DIR" 2>/dev/null || STATE_DIR="/tmp"
-
 log() { echo "[po0fw] $*"; }
 
-# 探测本机 IPv4 出口（多源兜底，全部直连）
-get_exit_ip() {
-  for u in "https://api-ipv4.ip.sb/ip" "https://ipv4.icanhazip.com" "https://api.ipify.org"; do
-    ip=$(curl $CURL_OPTS "$u" 2>/dev/null | tr -d ' \r\n')
-    case "$ip" in
-      *[!0-9.]*|"") continue ;;
-      *) echo "$ip"; return 0 ;;
-    esac
-  done
-  return 1
+# 从 JSON 响应提取 currentIp（形如 45.82.120.0\/24）
+json_current_ip() {
+  echo "$1" | sed -n 's/.*"currentIp":"\([^"]*\)".*/\1/p' | sed 's|\\/|/|g'
 }
-
-EXIT_IP=$(get_exit_ip) || { echo "po0fw: 无法探测出口 IPv4" >&2; exit 1; }
-EXIT_NET=$(echo "$EXIT_IP" | awk -F. '{print $1"."$2"."$3".0/24"}')
-# JSON 里 / 被转义为 \/，且必须只匹配 whitelist 数组的 "ip":"..." 条目，
-# 不能全文匹配（status 响应的 currentIp 字段会回显调用者自己的网段，导致假阳性）
-EXIT_NET_JSON="\"ip\":\"$(echo "$EXIT_NET" | sed 's|/|\\/|')\""
-log "出口 IP: $EXIT_IP (网段 $EXIT_NET)"
 
 FAIL=0
 IDX=0
@@ -73,33 +62,29 @@ for entry in $TOKENS; do
   case "$entry" in *@*) slot=${entry##*@} ;; esac
   short=$(echo "$tok" | cut -c1-12)
 
-  st=$(curl $CURL_OPTS "$API_BASE?action=status&token=$tok" 2>&1)
-  if ! echo "$st" | grep -q '"whitelist"'; then
-    log "#$IDX $short… status 失败: $st"
-    FAIL=1
-    IFS=','; continue
-  fi
-
   if [ "$MODE" = "status" ]; then
+    st=$(curl $CURL_OPTS "$STATUS_API?action=status&token=***" 2>&1)
     log "#$IDX $short… $st"
     IFS=','; continue
   fi
 
-  # 已在白名单则跳过（幂等 + 不推进淘汰队列）；只匹配 whitelist 的 "ip":"..." 条目
-  if echo "$st" | grep -qF "$EXIT_NET_JSON"; then
-    log "#$IDX $short… ✅ $EXIT_NET 已在白名单，跳过"
+  url="$API_BASE/$tok/add"
+  [ -n "$slot" ] && url="$url?slot=$slot"
+  res=$(curl $CURL_OPTS -X POST "$url" 2>&1)
+
+  if ! echo "$res" | grep -q '"whitelist"'; then
+    log "#$IDX $short… ❌ 请求失败: $res"
+    FAIL=1
     IFS=','; continue
   fi
 
-  url="$API_BASE?action=add&token=$tok"
-  [ -n "$slot" ] && url="$url&slot=$slot"
-  res=$(curl $CURL_OPTS "$url" 2>&1)
-  # add 后必须以复查 status 为准，不信任 add 的回显
-  st2=$(curl $CURL_OPTS "$API_BASE?action=status&token=$tok" 2>/dev/null)
-  if echo "$st2" | grep -qF "$EXIT_NET_JSON"; then
-    log "#$IDX $short… ➕ 已加白 $EXIT_NET${slot:+ (槽位 $slot)}"
+  cur=$(json_current_ip "$res")
+  cur_json=$(echo "$cur" | sed 's|/|\\/|')
+  # 验证：响应的 whitelist 数组必须包含 currentIp 对应网段
+  if [ -n "$cur" ] && echo "$res" | grep -qF "\"ip\":\"$cur_json\""; then
+    log "#$IDX $short… ✅ 出口 $cur 已在白名单${slot:+ (槽位 $slot)}"
   else
-    log "#$IDX $short… ❌ 加白失败，复查未见 $EXIT_NET。add 响应: $res"
+    log "#$IDX $short… ❌ 加白未生效 (currentIp=$cur): $res"
     FAIL=1
   fi
   IFS=','
