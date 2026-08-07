@@ -312,6 +312,12 @@ if (tokens.length === 0) {
     var title =
       "po0 加白 " + okCount + "/" + results.length + " · 出口 " + exitIp + (onCellular() ? " 📶" : "");
     var content = lines.join("\n");
+    // 请求若被代理接管，服务端看到并加白的是「代理出口 IP」而非本机宽带 IP，
+    // 脚本视角一切成功但用户体感“没加白”。出口 IP 变化时提示自查。
+    if (allOk && changed) {
+      content +=
+        "\n⚠️ 请确认出口 " + exitIp + " 是你的宽带/蜂窝 IP；若是代理节点 IP，说明该请求走了代理，请为 124.221.69.228 配置直连规则";
+    }
 
     // 成功态仅在出口 IP / 加白状态变化时通知；失败/未生效必须每次弹，
     // 否则持久化状态相同（都是失败）时 changed=false 会把错误静默吞掉。
