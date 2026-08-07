@@ -78,6 +78,13 @@ h2{font-size:26px;font-weight:800;letter-spacing:-.5px;margin-bottom:10px}
 .tokenrow input:focus{border-color:rgba(255,255,255,.7);background:rgba(255,255,255,.16)}
 .tokenrow .state{display:flex;align-items:center;font-size:13px;color:rgba(255,255,255,.8);white-space:nowrap;font-weight:600}
 .tokenrow .state.ok::before{content:"✓ ";font-weight:800}
+.tokentips{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}
+@media(max-width:720px){.tokentips{grid-template-columns:1fr}}
+.tokentips .tip{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:11px;padding:14px 16px}
+.tokentips .th{font-size:13.5px;font-weight:700;margin-bottom:6px}
+.tokentips .tb{font-size:12.8px;line-height:1.75;color:rgba(255,255,255,.82)}
+.tokentips .tb b{font-family:var(--mono);font-size:12.5px;color:#fff;display:inline-block;margin:3px 0}
+.tokentips .tb code{background:rgba(255,255,255,.16);border:none;color:#fff;font-size:.86em;padding:1px 6px;border-radius:5px}
 
 /* ============ platform tabs ============ */
 .seg{display:inline-flex;background:#f0f0f2;border-radius:12px;padding:4px;gap:2px;flex-wrap:wrap;margin-bottom:30px}
@@ -213,6 +220,16 @@ footer a{color:var(--ink2)}
       <div class="tokenrow">
         <input id="tok" type="text" placeholder="pgnfw_××××××××" autocomplete="off" spellcheck="false">
         <span class="state" id="tokState">未填写，命令中显示占位符</span>
+      </div>
+      <div class="tokentips">
+        <div class="tip">
+          <div class="th">📌 家宽出口建议钉固定槽位</div>
+          <div class="tb">白名单坑满后按写入时间淘汰最旧的。家宽出口被挤掉全家都断连 —— token 后加 <code>@槽位号</code>（0–4）钉死，永不参与淘汰：<br><b>pgnfw_xxx@0</b><br>手机等流动设备别钉，靠自愈就够。推荐：家宽 <code>@0</code>，剩 4 坑给流动设备。</div>
+        </div>
+        <div class="tip">
+          <div class="th">🖥 多台 po0 机器一次填完</div>
+          <div class="tb">每台机器 token 不同，拼起来填一处即可，设备换 IP 时所有机器同时更新：<br><b>pgnfw_机器A,pgnfw_机器B</b><br>分隔符用<b>英文逗号</b>；Shadowrocket / Quantumult X 请改用 <code>|</code> 分隔。也可混用槽位：<code>pgnfw_A@0,pgnfw_B</code>。</div>
+        </div>
       </div>
     </div>
 
