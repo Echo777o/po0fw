@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>po0 防火墙自动加白 · po0fw</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%9B%A1%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<meta name="description" content="自动把设备当前出口 IP 加入 po0 防火墙白名单。支持 Surge / Loon / Stash / Shadowrocket / Egern / Quantumult X。">
+<style>
+:root{
+  --vp-bg:#ffffff; --vp-bg-soft:#f6f6f7; --vp-bg-alt:#f9fafb;
+  --vp-fg:#3c3c43; --vp-fg-strong:#213547; --vp-muted:#67676c;
+  --vp-border:#e2e2e3; --vp-divider:#e2e2e3;
+  --vp-brand:#3451b2; --vp-brand-light:#3a5ccc; --vp-brand-fg:#ffffff;
+  --vp-code-bg:#f6f6f7; --vp-ok:#18794e; --vp-warn:#915930;
+  --vp-grad-1:#3451b2; --vp-grad-2:#8c5cf5;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --vp-bg:#1b1b1f; --vp-bg-soft:#202127; --vp-bg-alt:#161618;
+    --vp-fg:rgba(255,255,245,.86); --vp-fg-strong:rgba(255,255,245,.96); --vp-muted:rgba(235,235,245,.6);
+    --vp-border:#3c3f44; --vp-divider:#2e2e32;
+    --vp-brand:#a8b1ff; --vp-brand-light:#5c73e7; --vp-brand-fg:#ffffff;
+    --vp-code-bg:#202127; --vp-ok:#3dd68c; --vp-warn:#f9b44e;
+    --vp-grad-1:#5c73e7; --vp-grad-2:#bd34fe;
+  }
+}
+*{box-sizing:border-box;margin:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  background:var(--vp-bg); color:var(--vp-fg); line-height:1.75; font-size:16px;
+  -webkit-font-smoothing:antialiased;
+}
+.container{max-width:960px;margin:0 auto;padding:0 24px}
+
+/* Hero */
+.hero{padding:80px 0 56px;text-align:center}
+.hero .name{
+  font-size:clamp(44px,8vw,64px);font-weight:800;letter-spacing:-.02em;line-height:1.15;
+  background:linear-gradient(120deg,var(--vp-grad-1) 30%,var(--vp-grad-2));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.hero .text{
+  font-size:clamp(24px,4.5vw,36px);font-weight:800;letter-spacing:-.02em;line-height:1.25;
+  color:var(--vp-fg-strong);margin-top:4px;
+}
+.hero .tagline{font-size:clamp(15px,2.5vw,19px);color:var(--vp-muted);margin:16px auto 0;max-width:560px}
+.hero .actions{margin-top:32px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.btn{
+  display:inline-block;border-radius:20px;padding:0 20px;line-height:38px;
+  font-size:14px;font-weight:600;text-decoration:none;transition:opacity .2s;
+}
+.btn:active{opacity:.8}
+.btn.brand{background:var(--vp-brand);color:var(--vp-brand-fg)}
+.btn.alt{background:var(--vp-bg-soft);color:var(--vp-fg-strong);border:1px solid var(--vp-border)}
+
+/* Feature cards */
+.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;padding:24px 0 8px}
+.feature{background:var(--vp-bg-soft);border:1px solid transparent;border-radius:12px;padding:20px}
+.feature .icon{
+  width:44px;height:44px;border-radius:8px;background:var(--vp-bg);border:1px solid var(--vp-divider);
+  display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:14px;
+}
+.feature h3{font-size:15px;color:var(--vp-fg-strong);margin-bottom:6px}
+.feature p{font-size:13.5px;color:var(--vp-muted);line-height:1.6}
+
+/* Sections */
+section{padding:32px 0 8px}
+h2{
+  font-size:24px;font-weight:700;color:var(--vp-fg-strong);letter-spacing:-.02em;
+  border-top:1px solid var(--vp-divider);padding-top:28px;margin-bottom:18px;
+}
+h3{font-size:17px;color:var(--vp-fg-strong);margin:22px 0 10px}
+p{margin:10px 0}
+ul{padding-left:1.3em;margin:10px 0}
+li{margin:5px 0}
+a{color:var(--vp-brand);text-decoration:none}
+a:hover{text-decoration:underline}
+code{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  background:var(--vp-code-bg);border-radius:4px;padding:2px 6px;font-size:.88em;
+}
+pre{
+  background:var(--vp-code-bg);border-radius:8px;padding:16px 20px;overflow-x:auto;
+  margin:12px 0;line-height:1.6;
+}
+pre code{background:none;padding:0;font-size:13.5px}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:14px;display:block;overflow-x:auto}
+td,th{border:1px solid var(--vp-border);padding:9px 14px;text-align:left;white-space:nowrap}
+th{background:var(--vp-bg-soft);color:var(--vp-fg-strong)}
+td:last-child,th:last-child{white-space:normal}
+.tip{
+  border-left:3px solid var(--vp-brand);background:var(--vp-bg-soft);
+  border-radius:0 8px 8px 0;padding:12px 16px;margin:14px 0;font-size:14.5px;
+}
+.tip.warn{border-left-color:var(--vp-warn)}
+.tip strong{color:var(--vp-fg-strong)}
+
+/* Client install cards */
+.clients{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin:16px 0}
+.client{
+  background:var(--vp-bg-soft);border:1px solid var(--vp-divider);border-radius:12px;
+  padding:18px;display:flex;flex-direction:column;gap:10px;
+}
+.client .head{display:flex;align-items:center;gap:12px}
+.client .badge{width:40px;height:40px;border-radius:9px;flex:none;object-fit:cover;
+  box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.client .head b{font-size:15.5px;color:var(--vp-fg-strong)}
+.client .head span{display:block;font-size:12.5px;color:var(--vp-muted);font-weight:400}
+.client .install{margin-top:auto;display:flex;gap:8px;align-items:center}
+.client .install .btn{line-height:34px;border-radius:8px;font-size:13.5px;flex:1;text-align:center}
+.client .copy{
+  border:1px solid var(--vp-border);background:var(--vp-bg);color:var(--vp-fg);
+  border-radius:8px;padding:0 12px;height:34px;cursor:pointer;font-size:13px;flex:none;
+}
+.client .note{font-size:12.5px;color:var(--vp-muted);line-height:1.55}
+
+/* po0 面板示意图 */
+.mock{display:flex;justify-content:center;margin:18px 0}
+.mock-card{width:100%;max-width:320px;background:var(--vp-bg);border:1px solid var(--vp-divider);border-radius:16px;padding:18px 16px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.mock-title{font-size:16px;font-weight:700;color:var(--vp-fg-strong)}
+.mock-sub{font-size:12px;color:var(--vp-muted);margin:4px 0 12px;line-height:1.5}
+.mock-badge{display:inline-block;font-size:12px;color:var(--vp-ok);background:rgba(52,199,89,.14);border-radius:8px;padding:6px 14px;margin-bottom:12px}
+.mock-field,.mock-wl{background:var(--vp-bg-soft);border-radius:10px;padding:11px 13px;margin-bottom:11px}
+.mock-label{font-size:11px;color:var(--vp-muted);letter-spacing:.14em}
+.mock-ip{margin-top:6px;font-size:14px;color:var(--vp-brand);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.mock-wl-head{display:flex;justify-content:space-between;font-size:12px;color:var(--vp-muted);margin-bottom:9px}
+.mock-chips{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.chip{height:22px;border-radius:12px;border:1px solid var(--vp-divider);background:var(--vp-bg)}
+.chip:last-child{grid-column:1 / 2}
+.mock-copy{position:relative;text-align:center;font-size:13.5px;font-weight:600;color:var(--vp-fg-strong);border:1px solid var(--vp-divider);border-radius:9px;padding:12px;margin:4px 0 10px;outline:2.5px solid #e5484d;outline-offset:4px}
+.mock-copy .ptr{position:absolute;right:-6px;top:50%;transform:translateY(-50%);font-size:18px}
+.mock-add{text-align:center;font-size:13.5px;font-weight:600;color:#fff;background:#3b9bf0;border-radius:9px;padding:12px}
+.tok{color:var(--vp-warn);font-weight:600}
+
+footer{
+  border-top:1px solid var(--vp-divider);margin-top:48px;padding:28px 0 48px;
+  text-align:center;color:var(--vp-muted);font-size:13.5px;
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<div class="hero">
+  <h1><span class="name">po0fw</span><br><span class="text">po0 防火墙自动加白</span></h1>
+  <p class="tagline">自动把设备当前出口 IP 加入 po0 防火墙白名单 —— 多机器、多客户端、蜂窝优化、坑位记账。</p>
+  <div class="actions">
+    <a class="btn brand" href="#install">快速开始 →</a>
+    <a class="btn alt" href="https://github.com/kelenetwork/po0fw">GitHub</a>
+  </div>
+</div>
+
+<div class="features">
+  <div class="feature"><div class="icon">📱</div><h3>六大客户端</h3><p>Surge、Loon、Stash、Shadowrocket、Egern、Quantumult X，同一份脚本内置环境兼容层。</p></div>
+  <div class="feature"><div class="icon">⚡</div><h3>即时 + 兜底</h3><p>切换网络瞬间通过 network-changed 事件触发，每 10 分钟 cron 兜底捕捉纯 IP 变更。</p></div>
+  <div class="feature"><div class="icon">🎯</div><h3>无脑 POST</h3><p>每次直接上报出口 IP，服务端对重复 IP 幂等去重。写满按写入时间自动淘汰最旧 IP。</p></div>
+  <div class="feature"><div class="icon">🔄</div><h3>自动自愈</h3><p>被 FIFO 淘汰挤出白名单的设备，由自己的 cron / 切网事件在几分钟内自动补回。</p></div>
+</div>
+
+<section id="install">
+  <h2>快速开始</h2>
+
+  <h3>1. 获取 token</h3>
+  <p>在 po0 控制台的机器详情页，找到「防火墙」卡片，点 <strong>复制添加脚本</strong>（<em>不是</em>「添加当前 IP」）：</p>
+  <div class="mock">
+    <div class="mock-card">
+      <div class="mock-title">防火墙</div>
+      <div class="mock-sub">仅允许白名单中的最近来源 IP 访问入站端口。</div>
+      <div class="mock-badge">● 已开启</div>
+      <div class="mock-field">
+        <div class="mock-label">当前来源 IP</div>
+        <div class="mock-ip">203.0.113.•••</div>
+      </div>
+      <div class="mock-wl">
+        <div class="mock-wl-head"><span>白名单</span><span>5 / 5</span></div>
+        <div class="mock-chips"><span class="chip"></span><span class="chip"></span><span class="chip"></span><span class="chip"></span><span class="chip"></span></div>
+      </div>
+      <div class="mock-copy">📋 复制添加脚本<span class="ptr">👈</span></div>
+      <div class="mock-add">🛡 添加当前 IP</div>
+    </div>
+  </div>
+  <p>加白接口形如下面这段，你的 token 就是 URL 路径里 <code>pgnfw_</code> 开头的那一整串：</p>
+  <pre><code>curl -X POST https://124.221.69.228/api/firewall/<span class="tok">pgnfw_你复制到的这一整串</span>/add</code></pre>
+  <p>把 <code class="tok">pgnfw_…</code> 那一整串提取出来就是本机 token。一台机器对应一个 token，多个 token 用<strong>英文逗号</strong>分割。</p>
+  <div class="tip warn"><strong>🔑 token = 该机器的加白凭证</strong>，请妥善保管、不要公开分享。它只需填进你自己的客户端配置。</div>
+  <div class="tip"><strong>进阶：固定槽位</strong>。默认加白按最近使用时间自动淘汰最旧 IP。若想让某台机器（如家宽出口）常驻不被淘汰，在它的 token 后加 <code>@槽位号</code>，例如 <code class="tok">pgnfw_你的token@0</code>——脚本会请求 <code>…/add?slot=0</code> 把它钉在 0 号槽位。注意每个 IP 只能占一个槽位，换槽前需先在面板删掉旧槽位。</div>
+
+  <h3>2. 选择你的客户端安装</h3>
+  <div class="clients">
+
+    <div class="client">
+      <div class="head">
+        <img class="badge" src="icons/surge.png" alt="Surge" loading="lazy">
+        <div><b>Surge</b><span>iOS / Mac · sgmodule</span></div>
+      </div>
+      <div class="install">
+        <a class="btn brand" href="surge:///install-module?url=https%3A%2F%2Fraw.githubusercontent.com%2Fkelenetwork%2Fpo0fw%2Fmain%2Fsurge%2Fpo0-firewall-whitelist.sgmodule">一键安装</a>
+        <button class="copy" data-url="https://raw.githubusercontent.com/kelenetwork/po0fw/main/surge/po0-firewall-whitelist.sgmodule">复制链接</button>
+      </div>
+      <p class="note">安装时在模块参数 <code>tokens</code> 填入 token。首页自带手动刷新面板。</p>
+    </div>
+
+    <div class="client">
+      <div class="head">
+        <img class="badge" src="icons/loon.png" alt="Loon" loading="lazy">
+        <div><b>Loon</b><span>iOS · plugin</span></div>
+      </div>
+      <div class="install">
+        <a class="btn brand" href="loon://import?plugin=https%3A%2F%2Fraw.githubusercontent.com%2Fkelenetwork%2Fpo0fw%2Fmain%2Floon%2Fpo0-firewall-whitelist.plugin">一键安装</a>
+        <button class="copy" data-url="https://raw.githubusercontent.com/kelenetwork/po0fw/main/loon/po0-firewall-whitelist.plugin">复制链接</button>
+      </div>
+      <p class="note">安装后进插件设置，在 <code>API tokens</code> 输入框填入 token。Loon 无面板，可在「脚本」列表手动执行 cron 脚本立即加白。</p>
+    </div>
+
+    <div class="client">
+      <div class="head">
+        <img class="badge" src="icons/stash.png" alt="Stash" loading="lazy">
+        <div><b>Stash</b><span>iOS · stoverride</span></div>
+      </div>
+      <div class="install">
+        <a class="btn brand" href="stash://install-override?url=https%3A%2F%2Fraw.githubusercontent.com%2Fkelenetwork%2Fpo0fw%2Fmain%2Fstash%2Fpo0-firewall-whitelist.stoverride">一键安装</a>
+        <button class="copy" data-url="https://raw.githubusercontent.com/kelenetwork/po0fw/main/stash/po0-firewall-whitelist.stoverride">复制链接</button>
+      </div>
+      <p class="note">安装后编辑覆写，把两处 <code>argument: tokens=</code> 补全。附手动刷新磁贴。</p>
+    </div>
+
+    <div class="client">
+      <div class="head">
+        <img class="badge" src="icons/quantumultx.png" alt="Quantumult X" loading="lazy">
+        <div><b>Quantumult X</b><span>iOS · task 片段</span></div>
+      </div>
+      <div class="install">
+        <button class="copy" style="flex:1" data-url="https://raw.githubusercontent.com/kelenetwork/po0fw/main/quantumultx/po0-firewall-whitelist.snippet">复制片段链接</button>
+      </div>
+      <p class="note">QX 无法远程订阅定时任务，需手动装：打开 QX 配置文件，把片段里的任务行加进 <code>[task_local]</code>；可选把 <code>ip-cidr, 124.221.69.228/32, direct, no-resolve</code> 加进 <code>[filter_local]</code>。QX 不支持脚本参数：用 BoxJs 给 key <code>po0fw_tokens</code> 写入 token，或本地脚本改 <code>INLINE_TOKENS</code>。</p>
+    </div>
+
+    <div class="client">
+      <div class="head">
+        <img class="badge" src="icons/shadowrocket.png" alt="Shadowrocket" loading="lazy">
+        <div><b>Shadowrocket</b><span>iOS · srmodule</span></div>
+      </div>
+      <div class="install">
+        <a class="btn brand" href="shadowrocket://install?module=https%3A%2F%2Fraw.githubusercontent.com%2Fkelenetwork%2Fpo0fw%2Fmain%2Fshadowrocket%2Fpo0-firewall-whitelist.srmodule">一键安装</a>
+        <button class="copy" data-url="https://raw.githubusercontent.com/kelenetwork/po0fw/main/shadowrocket/po0-firewall-whitelist.srmodule">复制链接</button>
+      </div>
+      <p class="note">装好后<strong>点击模块 → 编辑参数</strong>，把 tokens 换成你的 token（多台机器用 <code>|</code> 分割）。手动装：配置 → 模块 → 右上角 + → 粘贴链接。</p>
+    </div>
+
+    <div class="client">
+      <div class="head">
+        <img class="badge" src="icons/egern.png" alt="Egern" loading="lazy">
+        <div><b>Egern</b><span>iOS / Mac · 原生模块</span></div>
+      </div>
+      <div class="install">
+        <a class="btn brand" href="egern:/modules/new?url=https%3A%2F%2Fraw.githubusercontent.com%2Fkelenetwork%2Fpo0fw%2Fmain%2Fegern%2Fpo0-firewall-whitelist.yaml">一键安装</a>
+        <button class="copy" data-url="https://raw.githubusercontent.com/kelenetwork/po0fw/main/egern/po0-firewall-whitelist.yaml">复制链接</button>
+      </div>
+      <p class="note">安装后在模块参数 <code>tokens</code> 填入 token（多台机器用英文逗号分割）。每 10 分钟及网络变化时自动加白。</p>
+    </div>
+
+  </div>
+
+  <div class="tip">
+    <strong>💡 一键按钮没反应？</strong> 部分浏览器会拦截 App URL Scheme，点「复制链接」后到客户端里「从 URL 安装 / 导入」即可。
+  </div>
+
+  <h3>3. 完成，看面板</h3>
+  <p>之后无需任何操作：<strong>切换网络时立即</strong>、以及<strong>每 10 分钟</strong>自动检查一次，出口 IP 变了才会真正写入白名单。支持面板的客户端会显示：</p>
+  <pre><code>po0 加白 1/1 · 出口 203.0.113.0/24
+#1 ✅ 3/5
+    203.0.113.0/24 ←
+    198.51.100.0/24 📶
+    192.0.2.0/24</code></pre>
+  <table>
+    <tr><th>标记</th><th>含义</th></tr>
+    <tr><td><code>←</code></td><td>当前出口所在网段</td></tr>
+    <tr><td><code>📶</code></td><td>本设备在蜂窝网络下加白的网段</td></tr>
+    <tr><td><code>3/5</code></td><td>白名单坑位占用 / 上限</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>设计说明</h2>
+  <ul>
+    <li><strong>无脑 POST</strong>：每次直接 POST 上报当前出口 IP，服务端对已在白名单的 IP 做幂等处理（不重复占坑、不推进淘汰队列），无需客户端先 GET 查询。白名单上限 5 个，写满按写入时间先进先出淘汰。</li>
+    <li><strong>C 段加白</strong>：服务端按 /24 网段加白并回显（如 <code>203.0.113.0/24</code>），同段内换 IP 不消耗新坑位、不推进淘汰，家宽拨号重连通常不产生新写入。</li>
+    <li><strong>自愈</strong>：每台设备都在自动检查，就算某台设备的 IP 被淘汰挤出白名单，它自己的 cron/切网事件最迟 10 分钟内会自动补回。</li>
+    <li><strong>安静运行</strong>：状态用持久化存储记账，只在失败、限频或消耗新坑位时才推送通知。</li>
+    <li><strong>隐私</strong>：面板不显示 token；token 只保存在你自己的客户端配置里，仓库与页面不包含、不上传任何 token。</li>
+  </ul>
+  <div class="tip warn">
+    <strong>⚠️ 注意</strong>：坑位满（5/5）后继续加白会按<strong>写入时间先进先出</strong>自动淘汰最旧的 IP，无需手动清理；但频繁写入会把还在用的 IP（比如家宽）挤出白名单 —— 被挤掉的设备会在几分钟内自愈补回。
+  </div>
+</section>
+
+<section>
+  <h2>FAQ</h2>
+  <p><strong>Q: 走代理时会把代理服务器 IP 加白吗？</strong><br>
+  不会。各载体都自带加白 API（<code>124.221.69.228</code>）直连规则，API 请求始终直连，看到的是设备真实出口 IP。</p>
+  <p><strong>Q: 家宽换 IP 后多久生效？</strong><br>
+  网络切换事件是即时的；纯粹的公网 IP 变更最迟 10 分钟内被 cron 捕捉。</p>
+  <p><strong>Q: 不同客户端功能有差异吗？</strong><br>
+  核心加白逻辑完全一致。差异：不支持 <code>$network</code> 的客户端没有 📶 蜂窝标记；Loon 无面板（可在脚本列表手动执行）；QX 无面板与脚本参数（token 走存储 key）。</p>
+  <p><strong>Q: 支持几台 po0 机器？</strong><br>
+  不限，tokens 逗号分割即可，面板按 #1 #2 … 分行显示。</p>
+</section>
+
+<footer>
+  MIT · <a href="https://github.com/kelenetwork/po0fw">github.com/kelenetwork/po0fw</a> · 借鉴自 <a href="https://github.com/reallinzc/po0fw">reallinzc/po0fw</a>，感谢原作者
+</footer>
+
+</div>
+
+<script>
+document.querySelectorAll('.copy').forEach(function(b){
+  b.addEventListener('click',function(){
+    navigator.clipboard.writeText(b.dataset.url).then(function(){
+      var t=b.textContent; b.textContent='已复制 ✓';
+      setTimeout(function(){b.textContent=t},1500);
+    });
+  });
+});
+</script>
+</body>
+</html>

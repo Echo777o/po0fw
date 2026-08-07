@@ -24,8 +24,25 @@ Token 在 po0 控制台机器详情页「防火墙」卡片获取，形如 `pgnf
 | OpenWrt / Kwrt 软路由 | 本仓库 shell 脚本 | cron + hotplug WAN 重连秒级触发 |
 | Windows | 本仓库 PowerShell | 计划任务：10 分钟 + 网络事件 |
 | 安卓 | [android/](android/)：MacroDroid / HTTP Shortcuts / Termux | 网络切换 + 定时 |
-| iOS 代理客户端 | 群友 [po0fw iOS 版](https://po0fw.rlyio.com/)（Surge/Loon/Stash/QX/小火箭/Egern） | network-changed + cron |
+| iOS/Mac 代理客户端 | 本仓库脚本模块：Surge / Loon / Stash / QX / Shadowrocket / Egern（[一键安装页](https://kelenetwork.github.io/po0fw/)） | network-changed 即时 + 10 分钟 cron |
 | iOS 无代理 App | [ios/](ios/)：快捷指令自动化 | Wi-Fi 切换触发 |
+
+## iOS / Mac 代理客户端模块
+
+Surge / Loon / Stash / Quantumult X / Shadowrocket / Egern 六客户端脚本模块（共享环境兼容层），带面板显示、蜂窝 📶 标记、network-changed 即时触发 + 每 10 分钟 cron 兜底：
+
+👉 **一键安装页：<https://kelenetwork.github.io/po0fw/>**
+
+| 客户端 | 载体 | token 配置 |
+|---|---|---|
+| Surge | `surge/po0-firewall-whitelist.sgmodule` | 模块参数 `tokens` |
+| Loon | `loon/po0-firewall-whitelist.plugin` | 插件设置 `API tokens` |
+| Stash | `stash/po0-firewall-whitelist.stoverride` | 覆写内 `argument: tokens=` |
+| Quantumult X | `quantumultx/po0-firewall-whitelist.snippet` | BoxJs key `po0fw_tokens` 或脚本内 `INLINE_TOKENS` |
+| Shadowrocket | `shadowrocket/po0-firewall-whitelist.srmodule` | 模块编辑参数（多 token 用 `\|` 分割） |
+| Egern | `egern/po0-firewall-whitelist.yaml` | 模块参数 `tokens` |
+
+> 模块部分借鉴自 [reallinzc/po0fw](https://github.com/reallinzc/po0fw)，感谢原作者。
 
 ## 安装
 
