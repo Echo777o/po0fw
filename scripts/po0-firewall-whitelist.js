@@ -43,6 +43,30 @@ var HIST_WINDOW_MS = 24 * 3600 * 1000; // 📶 标记的记账窗口
 var isQX = typeof $task !== "undefined";
 var isSurgeLike = typeof $httpClient !== "undefined"; // Surge/Stash/Shadowrocket/Loon
 
+// 客户端细分：各家注入的标识不同，Loon 有全局 $loon，
+// Surge 系则在 $environment 里带 surge-version / shadowrocket-version 等字段。
+var envInfo = "";
+try {
+  if (typeof $environment !== "undefined" && $environment) {
+    envInfo = JSON.stringify($environment).toLowerCase();
+  }
+} catch (e) {}
+
+var isLoon = typeof $loon !== "undefined" || envInfo.indexOf("loon") >= 0;
+var isSurgeFamily =
+  envInfo.indexOf("surge-version") >= 0 ||
+  envInfo.indexOf("shadowrocket") >= 0 ||
+  envInfo.indexOf("stash") >= 0;
+
+// ⚠️ timeout 单位在不同客户端不一致：
+//   Surge / Shadowrocket / Stash → 秒
+//   Loon / Quantumult X          → 毫秒
+// 写死 15 会让 Loon 只等 15 毫秒 → 必然超时 → 回调 error=null → 通知里显示 "(null)"。
+// 无法判定时干脆不传 timeout，交给模块声明的 timeout=60 兜底，避免再踩单位坑。
+var REQUEST_TIMEOUT = null;
+if (isLoon || isQX) REQUEST_TIMEOUT = 15000;
+else if (isSurgeFamily) REQUEST_TIMEOUT = 15;
+
 function storeRead(key) {
   if (isQX) return $prefs.valueForKey(key);
   if (typeof $persistentStore !== "undefined") return $persistentStore.read(key);
@@ -216,12 +240,14 @@ function apiCall(token, slot) {
   if (slot !== null && slot !== undefined && slot !== "") {
     url += "?slot=" + encodeURIComponent(slot);
   }
-  return httpRequest("POST", {
+  var opts = {
     url: url,
     headers: { "Content-Type": "application/json" },
     body: "",
-    timeout: 15,
-  }).then(function (r) {
+  };
+  if (REQUEST_TIMEOUT !== null) opts.timeout = REQUEST_TIMEOUT;
+
+  return httpRequest("POST", opts).then(function (r) {
     if (r.error) return { error: r.error };
     var data = null;
     try {
