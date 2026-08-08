@@ -76,11 +76,10 @@ for entry in $TOKENS; do
   short=$(echo "$tok" | cut -c1-12)
 
   if [ "$MODE" = "status" ]; then
-    # 复用加白端点：服务端幂等，已在白名单则不占新坑、不推进 FIFO，
-    # 因此这里读到的就是真实白名单快照。
-    url="$API_BASE/$tok/add"
-    [ -n "$slot" ] && url="$url?slot=$slot"
-    res=$(curl $CURL_OPTS -X POST "$url" 2>&1)
+    # 只读端点：GET <base>/<token>（不带 /add）。
+    # 切勿改回 POST .../add —— 当前 IP 不在白名单时，add 会真的写入并
+    # 占掉一个 FIFO 坑位、顶掉最旧记录，status 必须只看不改。
+    res=$(curl $CURL_OPTS "$API_BASE/$tok" 2>&1)
 
     if ! echo "$res" | grep -q '"whitelist"'; then
       log "#$IDX $short… ❌ 查询失败: $res"
@@ -121,7 +120,7 @@ for entry in $TOKENS; do
     if [ "$hit" = "1" ]; then
       log "#$IDX $short… ✅ 当前出口已在白名单"
     else
-      log "#$IDX $short… ❌ 当前出口不在白名单"
+      log "#$IDX $short… ⚠️  当前出口不在白名单（status 不会自动加白，需要时请跑 po0fw）"
       FAIL=1
     fi
     IFS=','; continue

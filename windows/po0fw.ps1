@@ -30,10 +30,17 @@ foreach ($entry in $Tokens.Split(',')) {
         $tok, $slot = $entry.Split('@', 2)
     }
     $short = $tok.Substring(0, [Math]::Min(12, $tok.Length))
-    $url = "$ApiBase/$tok/add"
-    if ($slot) { $url += "?slot=$slot" }
     try {
-        $res = Invoke-RestMethod -Method Post -Uri $url -TimeoutSec 20
+        if ($Status) {
+            # 只读端点：GET <base>/<token>（不带 /add）。
+            # 切勿改回 POST .../add —— 当前 IP 不在白名单时，add 会真的写入并
+            # 占掉一个 FIFO 坑位、顶掉最旧记录，status 必须只看不改。
+            $res = Invoke-RestMethod -Method Get -Uri "$ApiBase/$tok" -TimeoutSec 20
+        } else {
+            $url = "$ApiBase/$tok/add"
+            if ($slot) { $url += "?slot=$slot" }
+            $res = Invoke-RestMethod -Method Post -Uri $url -TimeoutSec 20
+        }
     } catch {
         $verb = if ($Status) { "查询失败" } else { "请求失败" }
         Write-Host "[po0fw] #$idx $short… ❌ ${verb}: $_"
@@ -64,7 +71,7 @@ foreach ($entry in $Tokens.Split(',')) {
         if ($inList) {
             Write-Host "[po0fw] #$idx $short… ✅ 当前出口已在白名单"
         } else {
-            Write-Host "[po0fw] #$idx $short… ❌ 当前出口不在白名单"
+            Write-Host "[po0fw] #$idx $short… ⚠️  当前出口不在白名单（status 不会自动加白，需要时请跑不带 -Status 的命令）"
             $fail = $true
         }
         continue
