@@ -1,0 +1,82 @@
+name: Windows PowerShell
+
+on:
+  push:
+    paths:
+      - "windows/**"
+      - ".github/workflows/windows-powershell.yml"
+  pull_request:
+    paths:
+      - "windows/**"
+      - ".github/workflows/windows-powershell.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  powershell-51:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse and install with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $scripts = @(
+              "windows\install-windows.ps1",
+              "windows\po0fw.ps1"
+          )
+
+          foreach ($script in $scripts) {
+              $bytes = [IO.File]::ReadAllBytes((Resolve-Path $script))
+              if ($bytes.Length -lt 3 -or $bytes[0] -ne 0xEF -or $bytes[1] -ne 0xBB -or $bytes[2] -ne 0xBF) {
+                  throw "$script must be UTF-8 with BOM for Windows PowerShell 5.1"
+              }
+
+              $tokens = $null
+              $errors = $null
+              [Management.Automation.Language.Parser]::ParseFile(
+                  (Resolve-Path $script),
+                  [ref]$tokens,
+                  [ref]$errors
+              ) | Out-Null
+              if ($errors.Count -gt 0) {
+                  throw "$script has parser errors: $($errors.Message -join '; ')"
+              }
+
+              $fragileContinuations = Get-Content -LiteralPath $script | Where-Object { $_ -match '`[ \t]*$' }
+              if ($fragileContinuations) {
+                  throw "$script contains fragile backtick line continuations"
+              }
+          }
+
+          try {
+              & .\windows\install-windows.ps1 -Tokens "pgnfw_ci_dummy" -SkipInitialRun
+
+              $task = Get-ScheduledTask -TaskName "po0fw" -ErrorAction Stop
+              if (-not $task.Actions -or $task.Actions[0].Execute -ne "wscript.exe") {
+                  throw "Scheduled task action was not registered with wscript.exe"
+              }
+              if ($task.Actions[0].Arguments -notmatch 'po0fw-hidden\.vbs') {
+                  throw "Scheduled task action is missing po0fw-hidden.vbs"
+              }
+              if ($task.Triggers.Count -ne 2) {
+                  throw "Expected timer and network triggers, got $($task.Triggers.Count)"
+              }
+
+              $installed = Join-Path $env:ProgramData "po0fw\po0fw.ps1"
+              $tokens = $null
+              $errors = $null
+              [Management.Automation.Language.Parser]::ParseFile(
+                  $installed,
+                  [ref]$tokens,
+                  [ref]$errors
+              ) | Out-Null
+              if ($errors.Count -gt 0) {
+                  throw "Installed worker has parser errors: $($errors.Message -join '; ')"
+              }
+          } finally {
+              Unregister-ScheduledTask -TaskName "po0fw" -Confirm:$false -ErrorAction SilentlyContinue
+              Remove-Item -LiteralPath (Join-Path $env:ProgramData "po0fw") -Recurse -Force -ErrorAction SilentlyContinue
+          }

@@ -1,3 +1,4 @@
+﻿#requires -Version 5.1
 # po0fw - po0 防火墙自动加白 (Windows)
 # 用法: powershell -File po0fw.ps1 -Tokens "pgnfw_xxx,pgnfw_yyy@0"
 param(
@@ -50,10 +51,9 @@ foreach ($entry in $Tokens.Split(',')) {
     $inList = $cur -and ($res.whitelist | Where-Object { $_.ip -eq $cur })
 
     if ($Status) {
-        # 复用加白端点：服务端幂等，已在白名单则不占新坑、不推进 FIFO，
-        # 所以这里读到的就是真实白名单快照。
         $limit = if ($res.limit) { $res.limit } else { 5 }
-        Write-Host "[po0fw] #$idx $short… 当前出口 $(if ($cur) { $cur } else { '未知' })"
+        $currentDisplay = if ($cur) { $cur } else { '未知' }
+        Write-Host "[po0fw] #$idx $short… 当前出口 $currentDisplay"
         $n = 0
         foreach ($e in $res.whitelist) {
             $mark = if ($cur -and $e.ip -eq $cur) { '->' } else { '  ' }
@@ -78,7 +78,8 @@ foreach ($entry in $Tokens.Split(',')) {
     }
 
     if ($inList) {
-        Write-Host "[po0fw] #$idx $short… ✅ 出口 $cur 已在白名单$(if ($slot) { " (槽位 $slot)" })"
+        $slotDisplay = if ($slot) { " (槽位 $slot)" } else { "" }
+        Write-Host "[po0fw] #$idx $short… ✅ 出口 $cur 已在白名单$slotDisplay"
     } else {
         Write-Host "[po0fw] #$idx $short… ❌ 加白未生效 (currentIp=$cur)"
         $fail = $true
