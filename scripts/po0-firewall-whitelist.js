@@ -60,7 +60,22 @@ function notify(title, subtitle, body) {
   else if (typeof $notification !== "undefined") $notification.post(title, subtitle, body);
 }
 
-function httpRequest(method, opts) {
+// 各客户端失败时回传的 error 五花八门：Loon 在网络瞬断 / TLS 握手失败时
+// 直接回调 error=null，裸 String(null) 只会得到毫无信息量的 "null"。
+function describeHttpError(error) {
+  var text;
+  if (error === null || error === undefined) text = "";
+  else if (typeof error === "object")
+    text = String(error.message || error.error || error.description || "");
+  else text = String(error);
+  text = text.replace(/^\s+|\s+$/g, "");
+  if (text === "" || text === "null" || text === "undefined" || text === "{}") {
+    return "网络请求失败（超时 / 握手失败 / 被拦截）";
+  }
+  return text;
+}
+
+function httpRequestOnce(method, opts) {
   return new Promise(function (resolve) {
     if (isQX) {
       opts.method = method;
@@ -69,7 +84,7 @@ function httpRequest(method, opts) {
           resolve({ body: resp.body, status: resp.statusCode });
         },
         function (err) {
-          resolve({ error: String((err && err.error) || err) });
+          resolve({ error: describeHttpError((err && err.error) || err) });
         }
       );
     } else if (isSurgeLike) {
@@ -77,7 +92,7 @@ function httpRequest(method, opts) {
       // $httpClient 是 ObjC 桥接对象，脱离对象调用会抛
       // "self type check failed for Objective-C instance method"。必须直调。
       var cb = function (error, response, body) {
-        if (error) resolve({ error: String(error) });
+        if (error) resolve({ error: describeHttpError(error) });
         else resolve({ body: body, status: response && (response.status || response.statusCode) });
       };
       if (method === "POST") $httpClient.post(opts, cb);
@@ -85,6 +100,32 @@ function httpRequest(method, opts) {
     } else {
       resolve({ error: "unsupported client" });
     }
+  });
+}
+
+function delay(ms) {
+  return new Promise(function (resolve) {
+    if (typeof setTimeout === "function") setTimeout(resolve, ms);
+    else resolve();
+  });
+}
+
+// 移动网络下单次请求失败很常见（cron 触发时链路刚唤醒 / 切网瞬间）。
+// 服务端对重复 IP 幂等，重试 POST /add 不会重复占坑或推进淘汰队列，因此可安全重试。
+var HTTP_RETRY = 3;
+var HTTP_RETRY_DELAY_MS = 1500;
+
+function httpRequest(method, opts, attempt) {
+  attempt = attempt || 1;
+  return httpRequestOnce(method, opts).then(function (r) {
+    if (!r.error) return r;
+    if (attempt >= HTTP_RETRY) {
+      r.error = r.error + "（已重试 " + HTTP_RETRY + " 次）";
+      return r;
+    }
+    return delay(HTTP_RETRY_DELAY_MS * attempt).then(function () {
+      return httpRequest(method, opts, attempt + 1);
+    });
   });
 }
 
