@@ -18,14 +18,17 @@
 set -u
 
 API_BASE="${PO0FW_API:-https://124.221.69.228/api/firewall}"
-STATUS_API="${PO0FW_STATUS_API:-https://console.po0.io/modules/servers/penguin/api/firewall.php}"
 CONF="${PO0FW_CONF:-/etc/po0fw.conf}"
 CURL_OPTS="-4sS -m 20 --retry 2 --retry-delay 2"
 
 MODE="add"
 ARG_TOKENS=""
 case "${1:-}" in
-  status) MODE="status" ;;
+  status)
+    MODE="status"
+    # 允许 `po0fw status pgnfw_xxx` 临时指定 token；省略则回落到环境变量/配置文件
+    ARG_TOKENS="${2:-}"
+    ;;
   "") ;;
   *) ARG_TOKENS="$1" ;;
 esac
@@ -49,6 +52,16 @@ json_current_ip() {
   echo "$1" | sed -n 's/.*"currentIp":"\([^"]*\)".*/\1/p' | sed 's|\\/|/|g'
 }
 
+# 从 whitelist 数组里逐条抽出 "ip slot"（每行一条，保持服务端返回顺序）。
+# slot 为 null 表示普通 FIFO 记录，数字表示被钉死的固定槽位。
+json_whitelist_entries() {
+  echo "$1" \
+    | sed -n 's/.*"whitelist":\[\([^]]*\)\].*/\1/p' \
+    | tr '}' '\n' \
+    | sed -n 's/.*"ip":"\([^"]*\)"[^"]*"slot":\([^,}]*\).*/\1 \2/p' \
+    | sed 's|\\/|/|g'
+}
+
 FAIL=0
 IDX=0
 OLDIFS=$IFS; IFS=','
@@ -63,8 +76,54 @@ for entry in $TOKENS; do
   short=$(echo "$tok" | cut -c1-12)
 
   if [ "$MODE" = "status" ]; then
-    st=$(curl $CURL_OPTS "$STATUS_API?action=status&token=***" 2>&1)
-    log "#$IDX $short… $st"
+    # 复用加白端点：服务端幂等，已在白名单则不占新坑、不推进 FIFO，
+    # 因此这里读到的就是真实白名单快照。
+    url="$API_BASE/$tok/add"
+    [ -n "$slot" ] && url="$url?slot=$slot"
+    res=$(curl $CURL_OPTS -X POST "$url" 2>&1)
+
+    if ! echo "$res" | grep -q '"whitelist"'; then
+      log "#$IDX $short… ❌ 查询失败: $res"
+      FAIL=1
+      IFS=','; continue
+    fi
+
+    cur=$(json_current_ip "$res")
+    limit=$(echo "$res" | sed -n 's/.*"limit":\([0-9]*\).*/\1/p')
+    [ -z "$limit" ] && limit=5
+    log "#$IDX $short… 当前出口 ${cur:-未知}"
+    n=0
+    hit=0
+    entries=$(json_whitelist_entries "$res")
+    OLDIFS2=$IFS
+    IFS='
+'
+    for line in $entries; do
+      IFS=$OLDIFS2
+      ip=${line%% *}
+      slotv=${line##* }
+      mark="  "
+      if [ -n "$cur" ] && [ "$ip" = "$cur" ]; then
+        mark="->"
+        hit=1
+      fi
+      case "$slotv" in
+        null|"") log "    $mark $ip  (普通，参与 FIFO 淘汰)" ;;
+        *)       log "    $mark $ip  (固定槽位 $slotv，不淘汰)" ;;
+      esac
+      n=$((n+1))
+      IFS='
+'
+    done
+    IFS=$OLDIFS2
+    [ "$n" -eq 0 ] && log "    (白名单为空)"
+    log "    共 $n/$limit 个网段占用"
+    if [ "$hit" = "1" ]; then
+      log "#$IDX $short… ✅ 当前出口已在白名单"
+    else
+      log "#$IDX $short… ❌ 当前出口不在白名单"
+      FAIL=1
+    fi
     IFS=','; continue
   fi
 
