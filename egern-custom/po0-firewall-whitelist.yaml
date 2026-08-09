@@ -1,0 +1,55 @@
+name: po0 防火墙自动加白（Egern 可控版）
+description: 保留原版多 token、固定槽位、网络切换与通知功能；定时任务可在模块参数中单独禁用并自定义 Cron 时间。默认 API 返回 serviceId is required 时，才调用控制台 token 备用接口。
+author: reallinzc / Echo777o
+homepage: https://github.com/Echo777o/po0fw/tree/main/egern-custom
+
+# tokens：多个 token 用英文逗号分隔；可在 token 后追加 @槽位（例如 pgnfw_xxx@0）。
+# cron_disabled：false 启用定时任务，true 禁用定时任务；不影响网络切换触发器。
+# cron_expr：支持 Egern 的 5 段或 6 段 Cron 表达式，默认每 10 分钟。
+compat_arguments:
+  tokens: ""
+  cron_disabled: false
+  cron_expr: "*/10 * * * *"
+
+compat_arguments_schema:
+  tokens:
+    name: API tokens
+    description: 多个 token 用英文逗号分隔；固定槽位可追加 @0。
+    default_value: ""
+  cron_disabled:
+    name: 禁用定时触发
+    description: 开启后不再按 Cron 定时执行，但网络切换时仍会自动执行。
+    default_value: false
+    options:
+      - false
+      - true
+  cron_expr:
+    name: 定时执行时间
+    description: Cron 表达式，例如 */10 * * * * 表示每 10 分钟。
+    default_value: "*/10 * * * *"
+
+# 两个加白端点都必须直连，确保服务端识别到设备的真实 IPv4 出口。
+rules:
+  - ip_cidr:
+      match: 124.221.69.228/32
+      policy: DIRECT
+      no_resolve: true
+  - domain:
+      match: console.po0.io
+      policy: DIRECT
+
+scriptings:
+  - schedule:
+      name: po0-fw-cron
+      cron: "{{{cron_expr}}}"
+      disabled: {{{cron_disabled}}}
+      script_url: https://raw.githubusercontent.com/Echo777o/po0fw/main/egern-custom/po0-firewall-whitelist.js
+      timeout: 60
+      env:
+        tokens: "{{{tokens}}}"
+  - network:
+      name: po0-fw-network
+      script_url: https://raw.githubusercontent.com/Echo777o/po0fw/main/egern-custom/po0-firewall-whitelist.js
+      timeout: 60
+      env:
+        tokens: "{{{tokens}}}"
