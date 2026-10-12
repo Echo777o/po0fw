@@ -1,5 +1,5 @@
 name: po0 防火墙自动加白（Egern 可控版）
-description: 保留原版多 token、固定槽位、网络切换与通知功能；定时任务可在模块参数中单独禁用并自定义 Cron 时间。默认 API 返回 serviceId is required 时，才调用控制台 token 备用接口。
+description: 保留多 token、固定槽位与网络切换功能；成功仅在确认新增网段后通知；加白失败（含超时）每次都通知，不按状态去重；写前查询失败仍照常加白，但不发送无法确认的新增成功提示；定时任务可在模块参数中单独禁用并自定义 Cron 时间。默认 API 返回 serviceId is required 时，才调用控制台 token 备用接口。
 author: reallinzc / Echo777o
 homepage: https://github.com/Echo777o/po0fw/tree/main/egern-custom
 
@@ -43,13 +43,13 @@ scriptings:
       name: po0-fw-cron
       cron: "{{{cron_expr}}}"
       disabled: {{{cron_disabled}}}
-      script_url: https://raw.githubusercontent.com/Echo777o/po0fw/main/egern-custom/po0-firewall-whitelist.js
+      script_url: https://raw.githubusercontent.com/Echo777o/po0fw/main/egern-custom/po0-firewall-whitelist.js?v=20261012-new-ip-and-failure
       timeout: 60
       env:
         tokens: "{{{tokens}}}"
   - network:
       name: po0-fw-network
-      script_url: https://raw.githubusercontent.com/Echo777o/po0fw/main/egern-custom/po0-firewall-whitelist.js
+      script_url: https://raw.githubusercontent.com/Echo777o/po0fw/main/egern-custom/po0-firewall-whitelist.js?v=20261012-new-ip-and-failure
       timeout: 60
       env:
         tokens: "{{{tokens}}}"

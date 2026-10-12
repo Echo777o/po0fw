@@ -6,6 +6,8 @@
  * - 仅当主接口返回 HTTP 400 且明确提示 serviceId is required 时，调用控制台
  *   token 备用接口；其它 HTTP 或网络错误不回退
  * - 响应必须确认当前 /24 已在白名单；带 @槽位时还必须确认槽位一致
+ * - 成功仅在确认新增网段后通知；所有加白失败（含超时）每次都通知，不按状态去重
+ * - 写前只读查询失败仍照常加白；无法确认新增时不发送成功通知
  * - token 只来自 ctx.env.tokens，不写入日志或通知
  */
 
@@ -82,7 +84,9 @@ async function requestText(ctx, method, url, options) {
     let text = "";
     try {
       text = await response.text();
-    } catch (e) {}
+    } catch (e) {
+      return { networkError: "读取响应失败: " + excerpt((e && e.message) || e) };
+    }
     return { status: Number(response.status) || 0, text: text };
   } catch (e) {
     const message = redactSecrets((e && e.message) || e);
@@ -208,6 +212,57 @@ function parseApiResult(exchange, requestedSlot, source) {
   return normalizeResponse(data, requestedSlot, source);
 }
 
+// 写前只读快照：GET 不带 /add，不会占用或淘汰白名单槽位。
+// 快照失败只影响通知判断，绝不能阻止原有加白/备用接口流程。
+async function readWhitelistBeforeAdd(ctx, token) {
+  const exchange = await requestText(ctx, "get", API_BASE + encodeURIComponent(token), {
+    headers: { Accept: "application/json" },
+    timeout: 5000,
+    credentials: "omit",
+  });
+  if (exchange.networkError || exchange.status < 200 || exchange.status >= 300) return null;
+  const data = safeJSON(exchange.text);
+  if (
+    !data ||
+    data.error ||
+    data.tokenAvailable === false ||
+    typeof data.enabled !== "boolean" ||
+    !validWhitelistIp(data.currentIp) ||
+    !Array.isArray(data.whitelist)
+  ) {
+    return null;
+  }
+  const ips = data.whitelist.map(function (entry) {
+    return entry && typeof entry === "object" ? entry.ip : entry;
+  });
+  // 不完整或无法识别的列表不能用来证明“写入前不存在”。
+  if (!ips.every(validWhitelistIp)) return null;
+  return { currentIp: data.currentIp, whitelist: ips };
+}
+
+function validWhitelistIp(value) {
+  if (typeof value !== "string" || !/^\d{1,3}(?:\.\d{1,3}){3}(?:\/24)?$/.test(value)) {
+    return false;
+  }
+  return value.replace("/24", "").split(".").every(function (part) {
+    return Number(part) <= 255;
+  });
+}
+
+function confirmedNewIp(before, state) {
+  // 防止查询和加白之间再次切网；仅“写前不存在、写后已生效”才算新增。
+  return !!(
+    before &&
+    state.applied &&
+    !state.error &&
+    validWhitelistIp(state.currentIp) &&
+    sameC24(before.currentIp, state.currentIp) &&
+    !before.whitelist.some(function (ip) {
+      return sameC24(ip, state.currentIp);
+    })
+  );
+}
+
 async function apiCall(ctx, token, slot) {
   let primaryUrl = API_BASE + encodeURIComponent(token) + "/add";
   if (slot !== null && slot !== undefined && slot !== "") {
@@ -237,7 +292,9 @@ async function apiCall(ctx, token, slot) {
 async function ensure(ctx, item, index, cellular) {
   const kvState = STORE_PREFIX + index;
   const kvHist = STORE_PREFIX + "hist_" + index;
+  const before = await readWhitelistBeforeAdd(ctx, item.token);
   const state = await apiCall(ctx, item.token, item.slot);
+  state.newIpAdded = confirmedNewIp(before, state);
   if (state.applied) {
     const history = readHistory(ctx, kvHist);
     const last = history.length ? history[history.length - 1] : null;
@@ -257,7 +314,7 @@ function describe(ctx, index, result) {
       : "";
   const via = state.source === "fallback" ? " ↪备用" : "";
   const head = "#" + (index + 1) + pin + via + " ";
-  if (state.error) return head + "❌ " + state.error;
+  if (state.error) return head + "❌ " + excerpt(state.error);
   if (state.enabled === false) return head + "⚠️ 防火墙未启用";
   if (!state.applied) {
     return (
@@ -298,19 +355,42 @@ export default async function (ctx) {
   }
 
   const cellular = onCellular(ctx);
-  const results = [];
-  for (let i = 0; i < tokens.length; i++) {
-    results.push(await ensure(ctx, tokens[i], i, cellular));
-  }
+  // 不同 token 并行，避免多个 15 秒超时串行累计到模块的 60 秒总时限。
+  // 同一 token（可能带不同槽位）仍按原顺序执行，避免并发改写同一白名单。
+  const pendingByToken = new Map();
+  const results = await Promise.all(tokens.map(function (item, index) {
+    const previous = pendingByToken.get(item.token) || Promise.resolve();
+    const pending = previous.then(async function () {
+      try {
+        return await ensure(ctx, item, index, cellular);
+      } catch (e) {
+        return {
+          kvState: STORE_PREFIX + index,
+          kvHist: STORE_PREFIX + "hist_" + index,
+          slot: item.slot,
+          st: { error: "脚本异常: " + excerpt((e && e.message) || e) },
+        };
+      }
+    });
+    pendingByToken.set(item.token, pending);
+    return pending;
+  }));
 
   let okCount = 0;
+  let failCount = 0;
+  let lastExitIp = "?";
   let exitIp = "?";
-  let changed = false;
+  let addedCount = 0;
   const lines = [];
   for (let i = 0; i < results.length; i++) {
     const state = results[i].st;
-    if (state.applied) okCount++;
-    if (state.currentIp) exitIp = state.currentIp;
+    if (state.applied && !state.error) okCount++;
+    else failCount++;
+    if (state.currentIp) lastExitIp = state.currentIp;
+    if (state.newIpAdded) {
+      addedCount++;
+      exitIp = state.currentIp;
+    }
     lines.push(describe(ctx, i, results[i]));
 
     const storedState =
@@ -320,16 +400,20 @@ export default async function (ctx) {
       "|" +
       (state.source || "?") +
       "|" +
-      (state.error || "");
+      excerpt(state.error);
     if (ctx.storage.get(results[i].kvState) !== storedState) {
       ctx.storage.set(results[i].kvState, storedState);
-      changed = true;
     }
   }
 
+  if (exitIp === "?") exitIp = lastExitIp;
   const title =
-    "po0 加白 " + okCount + "/" + results.length + " · 出口 " + exitIp + (cellular ? " 📶" : "");
-  if (changed) {
+    (failCount > 0 ? "po0 加白失败 " + failCount + "/" + results.length : "po0 新增加白 " + addedCount + " 项") +
+    " · 已生效 " + okCount + "/" + results.length +
+    (failCount > 0 && addedCount > 0 ? " · 新增 " + addedCount + " 项" : "") +
+    " · 出口 " + exitIp + (cellular ? " 📶" : "");
+  // 成功通知只看确认新增；失败无论是否与上次相同（含连续超时）都必须通知。
+  if (addedCount > 0 || failCount > 0) {
     ctx.notify({ title: "po0 防火墙加白", subtitle: title, body: lines.join("\n") });
   }
 }
